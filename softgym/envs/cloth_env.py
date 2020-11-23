@@ -8,7 +8,7 @@ from copy import deepcopy
 
 
 class ClothEnv(FlexEnv):
-    def __init__(self, observation_mode, action_mode, num_picker=2, render_mode='particle', picker_radius=0.05, particle_radius=0.00625, **kwargs):
+    def __init__(self, observation_mode="cam_rgb", action_mode="pickerpickplace", num_picker=2, render_mode='particle', picker_radius=0.05, particle_radius=0.00625, **kwargs):
         self.render_mode = render_mode
         self.action_mode = action_mode
         self.cloth_particle_radius = particle_radius
@@ -51,8 +51,10 @@ class ClothEnv(FlexEnv):
                 raise NotImplementedError
             self.observation_space = Box(np.array([-np.inf] * obs_dim), np.array([np.inf] * obs_dim), dtype=np.float32)
         elif observation_mode == 'cam_rgb':
-            self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.camera_height, self.camera_width, 3),
-                                         dtype=np.float32)
+            #self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.camera_height, self.camera_width, 3),
+            #                             dtype=np.float32)
+            self.observation_space = Box(low=0, high=255, shape=(self.camera_height, self.camera_width, 3),
+                                         dtype=np.uint8)
 
     def _sample_cloth_size(self):
         return np.random.randint(60, 120), np.random.randint(60, 120)
@@ -157,7 +159,7 @@ class ClothEnv(FlexEnv):
         if self.version == 2:
             robot_params = [1.] if self.action_mode in ['sawyer', 'franka'] else []
             self.params = (scene_params, robot_params)
-            pyflex.set_scene(env_idx, scene_params, 0, robot_params)
+            pyflex.set_scene(env_idx, scene_params, 0)#, robot_params)
         elif self.version == 1:
             pyflex.set_scene(env_idx, scene_params, 0)
 
