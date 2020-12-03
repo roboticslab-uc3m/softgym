@@ -6,6 +6,7 @@ from softgym.envs.rope_configuration import RopeConfigurationEnv
 from softgym.envs.cloth_flatten import ClothFlattenEnv
 from softgym.envs.cloth_fold import ClothFoldEnv
 from softgym.envs.cloth_drop import ClothDropEnv
+from softgym.envs.cloth_hang import ClothHangEnv
 from softgym.envs.cloth_fold_crumpled import ClothFoldCrumpledEnv
 from softgym.envs.cloth_fold_drop import ClothFoldDropEnv
 
@@ -59,7 +60,7 @@ env_arg_dict = {
                           'use_cached_states': True,
                           'deterministic': False},
     'ClothFlatten': {'observation_mode': 'cam_rgb',
-                     'action_mode': 'picker',
+                     'action_mode': 'sawyer',
                      'num_picker': 2,
                      'render': True,
                      'headless': True,
@@ -70,8 +71,8 @@ env_arg_dict = {
                      'use_cached_states': True,
                      'deterministic': False},
     'ClothFlattenPPP': {'observation_mode': 'cam_rgb',
-                        'action_mode': 'pickerpickplace',
-                        'num_picker': 2,
+                        'action_mode': 'picker_qpg',
+                        'num_picker': 1,
                         'render': True,
                         'headless': True,
                         'horizon': 20,
@@ -92,7 +93,7 @@ env_arg_dict = {
                      'use_cached_states': True,
                      'deterministic': False},
     'ClothFold': {'observation_mode': 'cam_rgb',
-                  'action_mode': 'picker',
+                  'action_mode': 'sawyer',
                   'num_picker': 2,
                   'render': True,
                   'headless': True,
@@ -135,6 +136,18 @@ env_arg_dict = {
                       num_variations=1000,
                       use_cached_states=True,
                       deterministic=False),
+    'ClothHang': dict(observation_mode='cam_rgb',
+                      action_mode='picker',
+                      num_picker=2,
+                      render=True,
+                      headless=True,
+                      horizon=30,
+                      action_repeat=16,
+                      render_mode='cloth',
+                      num_variations=1000,
+                      use_cached_states=True,
+                      deterministic=False),
+
     'PassWater': dict(observation_mode='cam_rgb',
                       action_mode='direct',
                       render=True,
@@ -193,4 +206,5 @@ SOFTGYM_ENVS = OrderedDict({
     'ClothFoldCrumpled': ClothFoldCrumpledEnv,
     'RopeFlatten': RopeFlattenEnv,
     'RopeConfiguration': RopeConfigurationEnv,
+    'ClothHang': ClothHangEnv,
 })
