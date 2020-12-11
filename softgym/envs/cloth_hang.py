@@ -22,6 +22,7 @@ class ClothHangEnv(ClothEnv):
         assert self.action_tool.num_picker == 2  # Two drop points for this task
         self.prev_dist = None  # Should not be used until initialized
 
+
     def get_default_config(self):
         """ Set the default config of the environment and load it to self.config """
         config = {
@@ -34,11 +35,6 @@ class ClothHangEnv(ClothEnv):
                                    'angle': np.array([0.633549, -0.397932, 0]),
                                    'width': self.camera_width,
                                    'height': self.camera_height}},
-            'box': { # all these will be overwritten by generate_env_variations
-                'box_dis_x': 0.6,
-                'box_dis_z': 0.6,
-                'height': 0.6, 
-            },
             'flip_mesh': 0
         }
         return config
@@ -111,7 +107,9 @@ class ClothHangEnv(ClothEnv):
                 config['ClothSize'] = [cloth_dimx, cloth_dimy]
             else:
                 cloth_dimx, cloth_dimy = config['ClothSize']
+
             self.set_scene(config)
+            #self.create_hanger()
             self.action_tool.reset([0., -1., 0.])
 
             pickpoints = self._get_drop_point_idx()[:2]  # Pick two corners of the cloth and wait until stablize
@@ -131,7 +129,7 @@ class ClothHangEnv(ClothEnv):
 
             picker_radius = self.action_tool.picker_radius
             self.action_tool.update_picker_boundary([-0.3, 0.05, -0.5], [0.5, 2, 0.5])
-            self.action_tool.set_picker_pos(picker_pos=pickpoint_pos + np.array([0., picker_radius, 0.]))
+            #self.action_tool.set_picker_pos(picker_pos=pickpoint_pos + np.array([0., picker_radius, 0.]))#DESCOMENTAR?
 
             # Pick up the cloth and wait to stablize
             for j in range(0, max_wait_step):
@@ -193,34 +191,35 @@ class ClothHangEnv(ClothEnv):
             'performance': performance,
             'normalized_performance': (performance - performance_init) / (0. - performance_init)}
 
-    def create_hang(self, glass_dis_x, glass_dis_z, height, border):
+    #def create_hanger(self, hang_dis_x, hang_dis_z, height, border):
+    def create_hanger(self):
         """
         hang consists of three thin boxes in Flex making an arc
-        dis_x: the length of the glass
-        dis_z: the width of the glass
-        height: the height of the glass.
-        border: the thickness of the glass wall.
+        dis_x: the length of the hang
+        dis_z: the width of the hang
+        height: the height of the hang.
+        border: the thickness of the hang wall.
 
         the halfEdge determines the center point of each wall.
         Note: this is merely setting the length of each dimension of the wall, but not the actual position of them.
         That's why left and right walls have exactly the same params, and so do front and back walls.   
         """
+        '''
         center = np.array([0., 0., 0.])
         quat = quatFromAxisAngle([0, 0, -1.], 0.)
         boxes = []
 
         # floor
-        halfEdge = np.array([glass_dis_x / 2. + border, border / 2., glass_dis_z / 2. + border])
+        halfEdge = np.array([hang_dis_x / 2. + border, border / 2., hang_dis_z / 2. + border])
         boxes.append([halfEdge, center, quat])
 
         # left wall
-        halfEdge = np.array([border / 2., (height) / 2., glass_dis_z / 2. + border])
+        halfEdge = np.array([border / 2., (height) / 2., hang_dis_z / 2. + border])
         boxes.append([halfEdge, center, quat])
 
         # right wall
         boxes.append([halfEdge, center, quat])
-
-
+        
         for i in range(len(boxes)):
             halfEdge = boxes[i][0]
             center = boxes[i][1]
@@ -228,30 +227,68 @@ class ClothHangEnv(ClothEnv):
             pyflex.add_box(halfEdge, center, quat)
 
         return boxes
+        '''
+        # Create hang directly
+
+        halfEdge = np.array([0.15, 0.8, 0.15])
+        center = np.array([0., 0., 0.])
+        quat = np.array([1., 0., 0., 0.])
+
+        pyflex.add_box(halfEdge, center, quat)
+        pyflex.add_box(halfEdge, center, quat)
 
 
-    def set_scene(self, config, state=None):
+    # WIP - Make this func define params in action_space.py/set_picker_pos()
+    def init_hanger_state(self, x, y, hang_dis_x, hang_dis_z, height, border):
+        '''
+        set the initial state of the hang.
+        '''
+        dis_x, dis_z = hang_dis_x, hang_dis_z
+        x_center, y_curr, y_last = x, y, 0.
+        if self.action_mode in ['sawyer', 'franka']:
+            y_curr = y_last = 0.56 # NOTE: robotics table
+        quat = quatFromAxisAngle([0, 0, -1.], 0.)
 
-        super().set_scene(config)
+        # states of 3 boxes forming the hang
+        states = np.zeros((3, 14))
+        '''
+        0-3: current (x, y, z) coordinate of the center point
+        3-6: previous (x, y, z) coordinate of the center point
+        6-10: current quat 
+        10-14: previous quat
+        '''
+        # right wall
+        states[2, :3] = np.array([x_center + (dis_x + border) / 2., (height) / 2. + y_curr, 0.])
+        states[2, 3:6] = np.array([x_center + (dis_x + border) / 2., (height) / 2. + y_last, 0.])
 
-        # compute hang params
-        if states is None:
-            self.set_glass_params(config["glass"])
-        else:
-            glass_params = states['glass_params']
-            self.border = glass_params['border']
-            self.height = glass_params['height']
-            self.glass_dis_x = glass_params['glass_dis_x']
-            self.glass_dis_z = glass_params['glass_dis_z']
-            self.glass_params = glass_params
+        states[:, 6:10] = quat
+        states[:, 10:] = quat
 
-        # create glass
-        self.create_hang(self.glass_dis_x, self.glass_dis_z, self.height, self.border)
+        return states
 
-        # move glass to be at ground or on the table
-        self.glass_states = self.init_glass_state(self.x_center, 0, self.glass_dis_x, self.glass_dis_z, self.height, self.border)
+    #Sets Hang params and calls parent set_scene
+    #def set_scene(self, config, states=None):
+    def set_hang(self, states=None):
 
-        pyflex.set_shape_states(self.glass_states)
 
-        # record glass floor center x
-        self.glass_x = self.x_center
+        # Hard coded (pls change this to be available from config) - Hang params
+        self.hang_dis_x = 0.6
+        self.hang_dis_z = 0.1
+        self.height = 0.6
+        self.border = 0.1
+        self.x_center = 0
+
+        # create hang - calls pyflex.add_box()
+        self.create_hanger(self.hang_dis_x, self.hang_dis_z, self.height, self.border)
+
+        # move glass to be at ground or at the table
+        self.hang_states = self.init_hanger_state(self.x_center, 0, self.hang_dis_x, self.hang_dis_z, self.height, self.border)
+
+        #pyflex.set_shape_states(self.hang_states)
+
+        # record hang floor center x
+        #self.hang_x = self.x_center
+
+        
+
+        

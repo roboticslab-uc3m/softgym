@@ -20,6 +20,7 @@ Create a conda environment and activate it: `conda env create -f environment.yml
 ## SoftGym Environments
 |Image|Name|Description|
 |----------|:-------------|:-------------|
+|![Gif](./examples/ClothHang.png)|[HangCloth](softgym/envs/cloth_hang.py) |WIP - Lay a piece of cloth in the air on the hanger|
 |![Gif](./examples/ClothDrop.gif)|[DropCloth](softgym/envs/cloth_drop.py) | Lay a piece of cloth in the air flat on the floor|
 |![Gif](./examples/ClothFold.gif)|[FoldCloth](softgym/envs/cloth_fold.py) | Fold a piece of flattened cloth in half|
 |![Gif](./examples/ClothFlatten.gif)|[SpreadCloth](softgym/envs/cloth_flatten.py)| Spread a crumpled cloth on the floor|

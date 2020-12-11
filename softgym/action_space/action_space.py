@@ -1,7 +1,7 @@
 import abc
 import numpy as np
 from gym.spaces import Box
-from softgym.utils.misc import rotation_2d_around_center, extend_along_center
+from softgym.utils.misc import rotation_2d_around_center, extend_along_center, quatFromAxisAngle
 import pyflex
 import scipy.spatial
 
@@ -110,8 +110,22 @@ class Picker(ActionToolBase):
     def set_picker_pos(picker_pos):
         """ Caution! Should only be called during the reset of the environment. Used only for cloth drop environment. """
         shape_states = np.array(pyflex.get_shape_states()).reshape(-1, 14)
-        shape_states[:, 3:6] = picker_pos
-        shape_states[:, :3] = picker_pos
+        shape_states[0:2, 3:6] = picker_pos # picker 1
+        shape_states[0:2, :3] = picker_pos # picker 2
+
+        print("Posicion del picker"+str(picker_pos))
+
+        # Define hanger
+        halfEdge = np.array([0.0225, 0.01, 0.165])# height, width, depth
+        center = np.array([0., 0., 0.])
+        quat = np.array([0., 0., -0., 1.])
+
+        pyflex.add_box(halfEdge, center, quat)
+
+        # Add hanger position - REMOVE MAGIC NUMBERS
+        wall_pos = [-0.1275, 0.5, 0.0, -0.1275, 0.5, 0.0, 0., 0., -0., 1., 0., 0., -0., 1.]
+        shape_states = np.vstack([shape_states, wall_pos])
+
         pyflex.set_shape_states(shape_states)
 
     def step(self, action):
