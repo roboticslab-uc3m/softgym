@@ -30,13 +30,13 @@ class NormalizedEnv(object):
         self._clip_obs = clip_obs
 
     def _update_obs_estimate(self, obs):
-        #flat_obs = self._wrapped_env.observation_space.flatten(obs)#()
-        flat_obs = gym.spaces.flatten(self._wrapped_env.observation_space, obs)
-        #added 
-        self._obs_mean = (1 - self._obs_alpha) * self._obs_mean + self._obs_alpha * np.reshape(flat_obs, (240, 240, 3))
-        self._obs_var = (1 - self._obs_alpha) * self._obs_var + self._obs_alpha * np.square(np.reshape(flat_obs, (240, 240, 3)) - self._obs_mean)
-        #self._obs_mean = (1 - self._obs_alpha) * self._obs_mean + self._obs_alpha * flat_obs
-        #self._obs_var = (1 - self._obs_alpha) * self._obs_var + self._obs_alpha * np.square(flat_obs - self._obs_mean)
+        flat_obs = self._wrapped_env.observation_space.flatten(obs)#()
+        self._obs_mean = (1 - self._obs_alpha) * self._obs_mean + self._obs_alpha * flat_obs
+        self._obs_var = (1 - self._obs_alpha) * self._obs_var + self._obs_alpha * np.square(flat_obs - self._obs_mean)
+        #Old - not needed if using sofagent
+        #flat_obs = gym.spaces.flatten(self._wrapped_env.observation_space, obs
+        #self._obs_mean = (1 - self._obs_alpha) * self._obs_mean + self._obs_alpha * np.reshape(flat_obs, (240, 240, 3))
+        #self._obs_var = (1 - self._obs_alpha) * self._obs_var + self._obs_alpha * np.square(np.reshape(flat_obs, (240, 240, 3)) - self._obs_mean)
 
 
     def _update_reward_estimate(self, reward):
