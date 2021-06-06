@@ -83,7 +83,7 @@ env_arg_dict = {
                         'deterministic': False},
     'ClothFoldPPP': {'observation_mode': 'cam_rgb',
                      'action_mode': 'pickerpickplace',
-                     'num_picker': 2,
+                     'num_picker': 1,
                      'render': True,
                      'headless': True,
                      'horizon': 20,
