@@ -1,16 +1,35 @@
 import numpy as np
 import pyflex
+import pickle
+import os.path as osp
 from copy import deepcopy
 from softgym.envs.cloth_env import ClothEnv
 from softgym.utils.pyflex_utils import center_object
+from sklearn.metrics import mean_squared_error as mse
 
 
 class ClothFoldEnv(ClothEnv):
-    def __init__(self, cached_states_path='cloth_fold_init_states.pkl', **kwargs):
+    def __init__(self, cached_states_path='cloth_fold_init_states.pkl', cached_goal_states=False,
+        cached_goals_path='cloth_flatten_init_states.pkl', **kwargs):
         self.fold_group_a = self.fold_group_b = None
         self.init_pos, self.prev_dist = None, None
         super().__init__(**kwargs)
+        self.cached_goal = cached_goal_states # DEBUG?
         self.get_cached_configs_and_states(cached_states_path, self.num_variations)
+        if cached_goal_states:
+            self.cached_goal_configs, self.cached_goal_states = self.get_cached_goals(cached_goals_path)
+
+    # Recover Flatten initial states to use them as goals
+    def get_cached_goals(self, cached_goals_path):
+        if not cached_goals_path.startswith('/'):
+            cur_dir = osp.dirname(osp.abspath(__file__))
+            cached_goals_path = osp.join(cur_dir, '../cached_initial_states', cached_goals_path)
+
+        if osp.exists(cached_goals_path):
+            # Load from cached file
+            with open(cached_goals_path, "rb") as handle:
+                self.cached_goal_configs, self.cached_goal_states = pickle.load(handle)
+                return self.cached_goal_configs, self.cached_goal_states
 
     def rotate_particles(self, angle):
         pos = pyflex.get_positions().reshape(-1, 4)
@@ -111,12 +130,22 @@ class ClothFoldEnv(ClothEnv):
         colors = np.zeros(num_particles)
         colors[self.fold_group_a] = 1
         # self.set_colors(colors) # TODO the phase actually changes the cloth dynamics so we do not change them for now. Maybe delete this later.
-
         pyflex.step()
         self.init_pos = pyflex.get_positions().reshape((-1, 4))[:, :3]
         pos_a = self.init_pos[self.fold_group_a, :]
         pos_b = self.init_pos[self.fold_group_b, :]
         self.prev_dist = np.mean(np.linalg.norm(pos_a - pos_b, axis=1))
+
+        # If cached_goal is used recover goals from flatten initial states and set one for current iteration
+        if self.cached_goal:
+            # Get a random state from cached goals
+            rand_goal = np.random.randint(0, len(self.cached_goal_states))
+            self.goal_pos = self.cached_goal_states[rand_goal]['particle_pos'].reshape((-1, 4))[:, :3]
+            #print("GOAL VS INIT", self.goal_pos.shape, self.init_pos.shape)
+            # Compute offset to match initial position TODO
+            # Trim goal_pos to match curr pos
+            if self.init_pos.shape[0] < self.goal_pos.shape[0]:
+                self.goal_pos = np.delete(self.goal_pos, np.s_[-(abs(self.goal_pos.shape[0] - self.init_pos.shape[0]) + 1):-1], 0)
 
         self.performance_init = None
         info = self._get_info()
@@ -124,6 +153,8 @@ class ClothFoldEnv(ClothEnv):
         return self._get_obs()
 
     def _step(self, action):
+        #if self.action_mode == 'pickerTEO':
+        #    action = self.action_tool.step_teo(action)
         self.action_tool.step(action)
         if self.action_mode in ['sawyer', 'franka']:
             print(self.action_tool.next_action)
@@ -137,14 +168,24 @@ class ClothFoldEnv(ClothEnv):
         particle in group a and the crresponding particle in group b
         :param pos: nx4 matrix (x, y, z, inv_mass)
         """
+        # Get current pos
         pos = pyflex.get_positions()
         pos = pos.reshape((-1, 4))[:, :3]
-        pos_group_a = pos[self.fold_group_a]
-        pos_group_b = pos[self.fold_group_b]
-        pos_group_b_init = self.init_pos[self.fold_group_b]
-        curr_dist = np.mean(np.linalg.norm(pos_group_a - pos_group_b, axis=1)) + \
-                    1.2 * np.mean(np.linalg.norm(pos_group_b - pos_group_b_init, axis=1))
+
+        if self.cached_goal:
+            # Trim pos to match goal cloth size if needed
+            if self.goal_pos.shape[0] < self.init_pos.shape[0]:
+                pos = np.delete(pos, np.s_[-(abs(pos.shape[0] - self.goal_pos.shape[0]) + 1):-1], 0)
+            #curr_dist = (np.square(pos - self.goal_pos)).mean(axis=None)
+            curr_dist = mse(self.goal_pos, pos) # Calc min square error between goal and curr pos
+        else:
+            pos_group_a = pos[self.fold_group_a]
+            pos_group_b = pos[self.fold_group_b]
+            pos_group_b_init = self.init_pos[self.fold_group_b]
+            curr_dist = np.mean(np.linalg.norm(pos_group_a - pos_group_b, axis=1)) + \
+                        1.2 * np.mean(np.linalg.norm(pos_group_b - pos_group_b_init, axis=1))
         reward = -curr_dist
+
         return reward
 
     def _get_info(self):
@@ -162,7 +203,9 @@ class ClothFoldEnv(ClothEnv):
             'performance': performance,
             'normalized_performance': (performance - performance_init) / (0. - performance_init),
             'neg_group_dist': -group_dist,
-            'neg_fixation_dist': -fixation_dist
+            'neg_fixation_dist': -fixation_dist,
+            'picker_pos': self.get_picker_pos()
+            #'depth_map': self.get_depth_map()
         }
         if 'qpg' in self.action_mode:
             info['total_steps'] = self.action_tool.total_steps

@@ -20,8 +20,8 @@ class FlexEnv(gym.Env):
                  headless=False,
                  render=True,
                  horizon=100,
-                 camera_width=240, #used to be 720
-                 camera_height=240,
+                 camera_width=128, #used to be 720
+                 camera_height=128,
                  num_variations=1,
                  action_repeat=8,
                  camera_name='default_camera',
@@ -76,6 +76,9 @@ class FlexEnv(gym.Env):
         if not cached_states_path.startswith('/'):
             cur_dir = osp.dirname(osp.abspath(__file__))
             cached_states_path = osp.join(cur_dir, '../cached_initial_states', cached_states_path)
+        
+        print("CACHE INFO" + str(cached_states_path))
+
         if self.use_cached_states and osp.exists(cached_states_path):
             # Load from cached file
             with open(cached_states_path, "rb") as handle:

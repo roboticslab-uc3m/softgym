@@ -5,17 +5,19 @@ from softgym.envs.flex_env import FlexEnv
 from softgym.action_space.action_space import  Picker, PickerPickPlace, PickerQPG
 from softgym.action_space.robot_env import RobotBase
 from copy import deepcopy
+from math import floor
+from PIL import Image
 
 
 class ClothEnv(FlexEnv):
-    def __init__(self, observation_mode="cam_rgb", action_mode="pickerpickplace", num_picker=2, render_mode='particle', picker_radius=0.05, particle_radius=0.00625, **kwargs):
+    def __init__(self, observation_mode="cam_rgb", action_mode="picker", num_picker=2, render_mode='particle', picker_radius=0.05, particle_radius=0.00625, **kwargs):
         self.render_mode = render_mode
         self.action_mode = action_mode
         self.cloth_particle_radius = particle_radius
         super().__init__(**kwargs)
 
         assert observation_mode in ['key_point', 'point_cloud', 'cam_rgb']
-        assert action_mode in ['picker', 'pickerpickplace', 'sawyer', 'franka', 'picker_qpg']
+        assert action_mode in ['picker', 'pickerpickplace', 'sawyer', 'franka', 'picker_qpg', 'pickerTEO']
         self.observation_mode = observation_mode
 
         if action_mode == 'picker':
@@ -38,6 +40,7 @@ class ClothEnv(FlexEnv):
                                          picker_low=(-0.3, 0., -0.3), picker_high=(0.3, 0.3, 0.3)
                                          )
             self.action_space = self.action_tool.action_space
+
         if observation_mode in ['key_point', 'point_cloud']:
             if observation_mode == 'key_point':
                 obs_dim = len(self._get_key_point_idx()) * 3
@@ -51,10 +54,10 @@ class ClothEnv(FlexEnv):
                 raise NotImplementedError
             self.observation_space = Box(np.array([-np.inf] * obs_dim), np.array([np.inf] * obs_dim), dtype=np.float32)
         elif observation_mode == 'cam_rgb':
-            #self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.camera_height, self.camera_width, 3),
-            #                             dtype=np.float32)
-            self.observation_space = Box(low=0, high=255, shape=(self.camera_height, self.camera_width, 3),
-                                         dtype=np.uint8)
+            self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.camera_height, self.camera_width, 3),
+                                         dtype=np.float32)
+            #self.observation_space = Box(low=0, high=255, shape=(self.camera_height, self.camera_width, 3),
+            #                             dtype=np.uint8)
 
     def _sample_cloth_size(self):
         return np.random.randint(60, 120), np.random.randint(60, 120)
@@ -62,7 +65,6 @@ class ClothEnv(FlexEnv):
     def _get_flat_pos(self):
         config = self.get_current_config()
         dimx, dimy = config['ClothSize']
-
         x = np.array([i * self.cloth_particle_radius for i in range(dimx)])
         y = np.array([i * self.cloth_particle_radius for i in range(dimy)])
         x = x - np.mean(x)
@@ -92,10 +94,9 @@ class ClothEnv(FlexEnv):
     def get_default_config(self):
         """ Set the default config of the environment and load it to self.config """
         particle_radius = self.cloth_particle_radius
-        if self.action_mode in ['sawyer', 'franka']:
-            cam_pos, cam_angle = np.array([0.0, 1.62576, 1.04091]), np.array([0.0, -0.844739, 0])
-        else:
-            cam_pos, cam_angle = np.array([-0.0, 0.82, 0.82]), np.array([0, -45 / 180. * np.pi, 0.])
+        
+        #cam_pos, cam_angle = np.array([-0.0, 0.82, 0.82]), np.array([0, -45 / 180. * np.pi, 0.])
+        cam_pos, cam_angle = np.array([0.0, 1.0, 0.0]), np.array([0, -0.5 * np.pi, 0.]) # ortogonal cam angle
         config = {
             'ClothPos': [-1.6, 2.0, -0.8],
             'ClothSize': [int(0.6 / particle_radius), int(0.368 / particle_radius)],
@@ -115,15 +116,14 @@ class ClothEnv(FlexEnv):
         if self.observation_mode == 'cam_rgb':
             return self.get_image(self.camera_height, self.camera_width)
         if self.observation_mode == 'point_cloud':
-            particle_pos = np.array(pyflex.get_positions()).reshape([-1, 4])[:, :3].flatten()
+            particle_pos = np.array(pyflex.get_positions()).reshape([-1, 4])[:, :3].flatten()     
             pos = np.zeros(shape=self.particle_obs_dim, dtype=np.float)
             pos[:len(particle_pos)] = particle_pos
         elif self.observation_mode == 'key_point':
             particle_pos = np.array(pyflex.get_positions()).reshape([-1, 4])[:, :3]
             keypoint_pos = particle_pos[self._get_key_point_idx(), :3]
             pos = keypoint_pos
-
-        if self.action_mode in ['sphere', 'picker']:
+        if self.action_mode in ['sphere', 'picker', 'pickerTEO']:
             shapes = pyflex.get_shape_states()
             shapes = np.reshape(shapes, [-1, 14])
             pos = np.concatenate([pos.flatten(), shapes[:, 0:3].flatten()])
@@ -136,7 +136,7 @@ class ClothEnv(FlexEnv):
 
     def _get_key_point_idx(self):
         """ The keypoints are defined as the four corner points of the cloth """
-        dimx, dimy = self.current_config['ClothSize']
+        dimx, dimy = self.current_config['ClothSize']        
         idx_p1 = 0
         idx_p2 = dimx * (dimy - 1)
         idx_p3 = dimx - 1
@@ -156,6 +156,8 @@ class ClothEnv(FlexEnv):
         scene_params = np.array([*config['ClothPos'], *config['ClothSize'], *config['ClothStiff'], render_mode,
                                  *camera_params['pos'][:], *camera_params['angle'][:], camera_params['width'], camera_params['height'], mass,
                                  config['flip_mesh']])
+        
+        print("\n======\nCAMERA PARAMS",scene_params)# debug
         if self.version == 2:
             robot_params = [1.] if self.action_mode in ['sawyer', 'franka'] else []
             self.params = (scene_params, robot_params)
@@ -166,3 +168,50 @@ class ClothEnv(FlexEnv):
         if state is not None:
             self.set_state(state)
         self.current_config = deepcopy(config)
+    
+    #---------------------------------------------------------------------------
+    # ravens helper functions
+    #---------------------------------------------------------------------------
+
+
+    # recover picker positions
+    def get_picker_pos(self):
+        picker_pos = np.array(pyflex.get_shape_states()).reshape(-1, 14)
+        return picker_pos[:, :3]
+
+    # returns a map with r.w.c.c depths for every pixel in the image 
+    # TODO lot of redundant code!!
+    def get_depth_map(self, pix_size=0.015625):
+        pos = pyflex.get_positions()
+        pos = pos.reshape((-1, 4))[:, :3]
+        dmap = np.zeros(shape=(self.camera_height, self.camera_width))
+
+        d_len_h = dmap.shape[0]
+        d_len_w = dmap.shape[1]
+        
+        # Loop throught every cloth particle
+        for i in range(pos.shape[0]):      
+            d_h = (pos[i][2] - 0.5)/pix_size # From position to pixel
+            d_w = (pos[i][0] - 0.5)/pix_size
+            d_h = int(d_len_h/2 + d_h)
+            d_w = int(d_len_w/2 + d_w)
+            
+            # Assign correct depth to each pixel in dmap
+            if (abs(d_h) < d_len_h) and (abs(d_w) < d_len_w):
+                dmap[d_h][d_w] = pos[i][1] 
+
+        # Recover also picker height
+        p_pos = self.get_picker_pos()[0]
+        u = (p_pos[2] - 0.5)/pix_size # From position to pixel
+        v = (p_pos[0] - 0.5)/pix_size
+        u = int(d_len_h/2 + u)
+        v = int(d_len_w/2 + v)
+        
+        # Assign correct depth to each pixel in dmap
+        if (abs(u) < d_len_h) and (abs(v) < d_len_w):
+            dmap[u][v] = p_pos[1] 
+
+        #img = Image.fromarray(dmap, 'I') # debug
+        #img.show()
+
+        return dmap
